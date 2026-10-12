@@ -6,7 +6,7 @@
 | `lgpd-data-mapping` | Inventariar fluxos de dados pessoais | `data-map.md` |
 | `lgpd-ropa` | Consolidar Registro de Operações (Art. 37) | `ROPA.md` |
 | `lgpd-ripd` | Avaliação de impacto para alto risco (Art. 38) | `RIPD/ripd-{slug}.md` |
-| `lgpd-consent-schema` | Modelar consent ledger no banco (Prisma) | `consent/schema.prisma`, `consent/spec.md` |
+| `lgpd-consent-schema` | Modelar consent ledger no banco (Eloquent/migrations) | `consent/migration.php`, `consent/spec.md` |
 | `lgpd-dsar` | Implementar endpoints de exercício de direitos (Art. 18) | `dsar/workflow.md`, `dsar/endpoints.md` |
 | `lgpd-audit-logging` | Log imutável encadeado | `audit-logging.md` |
 | `lgpd-encryption-keys` | TDE, KMS, rotação | `security/encryption.md` |

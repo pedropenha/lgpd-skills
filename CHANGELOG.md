@@ -3,6 +3,21 @@
 Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 Versionamento segue [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [1.3.0] - 2026-10-12
+
+### Alterado (fork pedropenha — ver FORK-NOTES.md)
+- **Stack adaptada de Prisma/Next.js/Better Auth/React Native para PHP/Laravel + Flutter + Vue/Nuxt 2**:
+  - `lgpd-consent-schema`: migration Laravel (`consent-migration.php`) substitui schema Prisma; integração Better Auth → fluxo de auth Laravel
+  - `lgpd-dsar`: endpoints Next.js → controllers Laravel; tela React Native → Flutter + notas Nuxt
+  - `lgpd-audit-logging`: schema Prisma + middleware TS → Eloquent + AuditLogger PHP
+  - `lgpd-encryption-keys`: Node crypto → `openssl` + casts `encrypted` do Laravel + blind indexes; SSL pinning RN → Flutter
+  - `lgpd-data-mapping`: anotações em docblocks PHP; `extract-lgpd-annotations.sh` varre `app/ database/ routes/`
+  - `lgpd-retention-erasure`: schema → migration, cron → Laravel scheduler
+  - `lgpd-eca-digital-minors`: seção de implementação PHP/Flutter/Nuxt
+  - Referências menores em `lgpd-audit`, `lgpd-legacy-retrofit`, `lgpd-vendor-audit`, `lgpd-ripd`
+- Manifests de plugin apontam para `pedropenha/lgpd-skills`
+- Conteúdo jurídico inalterado em relação ao upstream `goul4rt/lgpd-skills@d85d79a`
+
 ## [1.2.0] - 2026-05-30
 
 ### Adicionado

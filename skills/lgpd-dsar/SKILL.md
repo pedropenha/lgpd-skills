@@ -78,7 +78,7 @@ flowchart TD
 
 ## Endpoint specs
 
-Ver `assets/endpoints.md` para implementação detalhada em Next.js / React Native.
+Ver `assets/endpoints.md` para implementação detalhada em Laravel + Flutter/Nuxt.
 
 ## Audit logging obrigatório
 

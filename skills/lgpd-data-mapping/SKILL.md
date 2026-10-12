@@ -1,6 +1,6 @@
 ---
 name: lgpd-data-mapping
-description: Build and maintain a data inventory (mapa de dados) of all personal data processing activities in the project. Use when user asks "mapa de dados", "data mapping LGPD", "que dados pessoais coletamos", "inventário de tratamento", or as part of an LGPD audit pipeline. Produces `.lgpd/data-map.md`. Especially important for legacy systems where the inventory is built reverse-engineered from code (Prisma schemas, API endpoints, third-party SDKs, log statements).
+description: Build and maintain a data inventory (mapa de dados) of all personal data processing activities in the project. Use when user asks "mapa de dados", "data mapping LGPD", "que dados pessoais coletamos", "inventário de tratamento", or as part of an LGPD audit pipeline. Produces `.lgpd/data-map.md`. Especially important for legacy systems where the inventory is built reverse-engineered from code (migrations e models Eloquent, API endpoints, third-party SDKs, log statements).
 ---
 
 # Data Mapping LGPD
@@ -15,8 +15,8 @@ Liste atividades por feature/módulo do produto antes de codar. Cada feature que
 
 ### Para legacy (reverse-engineering)
 
-1. **Schemas de banco**: leia `prisma/schema.prisma` (ou equivalente). Toda tabela com referência a usuário = candidato.
-2. **APIs**: leia rotas REST/tRPC/GraphQL. Endpoints recebendo PII = atividade.
+1. **Schemas de banco**: leia `database/migrations` e `app/Models` (Eloquent) — ou equivalente (Doctrine entities, schemas). Toda tabela com referência a usuário = candidato.
+2. **APIs**: leia `routes/api.php`, controllers e resources. Endpoints recebendo PII = atividade.
 3. **SDKs de terceiros**: grep por nomes (Sentry, Datadog, Mixpanel, Amplitude, Segment, Stripe, Discord SDK, Firebase, OneSignal). Cada um é compartilhamento.
 4. **Logs**: cuidado — logs podem vazar PII inadvertidamente (audit também).
 5. **Cookies e localStorage** em frontends.
@@ -65,8 +65,8 @@ Liste atividades por feature/módulo do produto antes de codar. Cada feature que
 | Sensíveis? | Não / Sim ({quais}) |
 | Dados | nome, e-mail, IP, user-agent |
 | Fonte | coletado do titular no signup |
-| Sistemas | `users` (Postgres), `auth_sessions` (Redis), Datadog logs |
-| Operadores | AWS RDS (US-East-1), Datadog (US), Better Auth (lib local) |
+| Sistemas | `users` (MySQL/Postgres), `auth_sessions` (Redis), Datadog logs |
+| Operadores | AWS RDS (US-East-1), Datadog (US), Laravel Sanctum (lib local) |
 | Transferência intl. | Sim — AWS US, Datadog US (ver `.lgpd/transfers/`) |
 | Retenção | 5 anos após inatividade (obrig. legal — prescrição CDC) |
 | Segurança | TLS 1.3, TDE, RBAC, audit log |
@@ -79,23 +79,25 @@ Liste atividades por feature/módulo do produto antes de codar. Cada feature que
 
 ## Annotations no schema (greenfield)
 
-Sugira ao usuário anotações em comentários do Prisma schema:
+Sugira ao usuário anotações em docblocks das migrations ou dos models Eloquent:
 
-```prisma
-/// @lgpd:activity=a001
-/// @lgpd:purpose="autenticação e gestão de conta"
-/// @lgpd:legal_basis="art_7_v"  // execução de contrato
-/// @lgpd:retention="5y_after_inactivity"
-/// @lgpd:sensitive=false
-model User {
-  id        String   @id
-  email     String   @unique  /// @lgpd:pii=high
-  cpf       String?  /// @lgpd:pii=high @lgpd:masked=true
-  // ...
-}
+```php
+/**
+ * @lgpd:activity=a001
+ * @lgpd:purpose="autenticação e gestão de conta"
+ * @lgpd:legal_basis="art_7_v"  // execução de contrato
+ * @lgpd:retention="5y_after_inactivity"
+ * @lgpd:sensitive=false
+ */
+Schema::create('users', function (Blueprint $table) {
+    $table->id();
+    $table->string('email')->unique();   // @lgpd:pii=high
+    $table->string('cpf')->nullable();   // @lgpd:pii=high @lgpd:masked=true
+    // ...
+});
 ```
 
-Script auxiliar para extrair anotações: `assets/extract-prisma-annotations.sh`.
+Script auxiliar para extrair anotações: `assets/extract-lgpd-annotations.sh` (varre `app/`, `database/`, `routes/` por `@lgpd:`).
 
 ## Checklist de qualidade
 

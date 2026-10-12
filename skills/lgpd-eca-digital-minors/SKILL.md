@@ -68,6 +68,29 @@ Se SIM em qualquer → ECA Digital aplica.
 8. Atualizar política de privacidade
 9. Documentar em `.lgpd/eca-digital.md`
 
+## Implementação no stack (PHP/Laravel + Flutter + Nuxt)
+
+### Verificação de idade (Art. 9º, § 1º)
+
+- **Flutter**: gate no onboarding/splash — `AgeGateScreen` antes de liberar o app; persiste verificação via endpoint `POST /api/age-verification` (nunca só local/autodeclaração — é vedada). Opções: documento via SDK (ex.: Unico IDPay, Caf.io — vendors BR), ou validação pelo responsável.
+- **Nuxt 2**: middleware de rota `age-gate.js` redirecionando para `/age-verification` quando `user.age_verified_at == null`; a verificação em si é sempre server-side no Laravel.
+- **Laravel**: `POST /api/age-verification` recebe evidência do método (doc, vendor callback, guardian) e grava `age_verified_at` + `age_verification_method` no `users`. Marque `is_minor` derivado de `date_of_birth`.
+
+### Vinculação a responsável (Art. 24, até 16 anos)
+
+- Tabelas `guardians` + `minor_links` — ver migration em `lgpd-consent-schema/assets/consent-migration.php`.
+- Fluxo: menor informa e-mail do responsável → job `SendGuardianLinkRequest` → responsável autentica e autoriza via `POST /api/guardian/authorize` → `minor_links.active = true`.
+- Enquanto `active = false`: feature-flag de restrições (sem chat com estranhos, sem geolocalização, tempo limitado).
+
+### Controles parentais (Arts. 17-18)
+
+- Endpoints `GET/PATCH /api/guardian/controls` — tempo limite, restrição de recomendação, bloqueio de funcionalidades sensíveis.
+- No Flutter, controles ficam numa área separada ("Área do Responsável") protegida por auth do responsável, não do menor.
+
+### Vedação de perfilamento/ads (Arts. 22, 26)
+
+- Flag `is_minor` no payload do usuário; qualquer pipeline de ads/analytics no PHP deve early-return para `is_minor = true`. No Flutter/Nuxt, não carregar SDKs de ads para contas flagadas.
+
 ## Caso Discord / comunidade
 
 Para um servidor Discord ou plataforma comunitária:

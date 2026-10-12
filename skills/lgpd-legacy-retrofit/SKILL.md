@@ -13,7 +13,7 @@ Skill de entrada para auditar e remediar sistemas legados. Não tenta resolver t
 
 Investigue o código existente:
 
-1. **Schema do banco** — `prisma/schema.prisma`, migrations
+1. **Schema do banco** — `database/migrations`, `app/Models` (Eloquent) ou equivalente
 2. **APIs** — rotas, controllers, GraphQL schemas
 3. **SDKs de terceiros** — `package.json`, env vars
 4. **Endpoints expostos** — OpenAPI, docs

@@ -26,7 +26,7 @@
 
 ```mermaid
 flowchart LR
-  T[Titular] -->|signup| API[API Next.js]
+  T[Titular] -->|signup| API[API Laravel]
   API --> DB[(Postgres)]
   API --> Q[Fila]
   Q --> Analytics[Datadog US]
