@@ -3,6 +3,13 @@
 Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 Versionamento segue [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [1.4.0] - 2026-10-12
+
+### Adicionado (fork pedropenha)
+- `marco-civil-platform` — Lei 12.965/2014 + Dec. 8.771/2016 para provedores de aplicação com UGC: logs 6 meses, sigilo via ordem judicial, takedown Art. 19/21
+- `lgpd-school-dpa` — DPA escola→plataforma (edtech) com cláusulas de menores, SLA, ciclo letivo + template `dpa-school-template.md`
+- `lbi-education-a11y` — LBI, Decreto 5.296/2004, eMAG, NBR 17225, requisitos PNLD para conteúdo educacional
+
 ## [1.3.0] - 2026-10-12
 
 ### Alterado (fork pedropenha — ver FORK-NOTES.md)
