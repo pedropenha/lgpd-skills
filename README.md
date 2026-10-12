@@ -155,7 +155,7 @@ disparam via `activate_skill`.
 ### Cursor
 
 No editor, rode `/add-plugin` e cole a URL do repo
-(`https://github.com/goul4rt/lgpd-skills`), ou instale pela vitrine em
+(`https://github.com/pedropenha/lgpd-skills`), ou instale pela vitrine em
 [cursor.com/marketplace](https://cursor.com/marketplace).
 
 ### OpenCode
