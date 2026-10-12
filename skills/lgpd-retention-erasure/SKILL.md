@@ -41,33 +41,32 @@ Quando há volume e dificuldade de varrer storage. Dados cifrados por chave do t
 ### 4. Anonimização
 Substituto à eliminação. Após anonimizar (irreversivelmente), dado sai do escopo da LGPD (Art. 12).
 
-## Schema Prisma
+## Migration Laravel
 
-```prisma
-model RetentionRule {
-  id              String   @id @default(cuid())
-  entity          String   // "User", "Order", "Message"
-  purpose         String   // "marketing", "billing"
-  retentionMonths Int
-  legalBasis      String
-  postAction      PostRetentionAction
-  triggeredBy     String   // "consent_revoked", "contract_end", "ttl"
-  active          Boolean  @default(true)
-}
-
-enum PostRetentionAction {
-  HARD_DELETE
-  ANONYMIZE
-  CRYPTO_SHRED
-  BLOCK_AND_RETAIN
-}
+```php
+Schema::create('retention_rules', function (Blueprint $table) {
+    $table->ulid('id')->primary();
+    $table->string('entity');          // "User", "Order", "Message"
+    $table->string('purpose');         // "marketing", "billing"
+    $table->unsignedInteger('retention_months');
+    $table->string('legal_basis');
+    // HARD_DELETE | ANONYMIZE | CRYPTO_SHRED | BLOCK_AND_RETAIN
+    $table->string('post_action');
+    $table->string('triggered_by');    // "consent_revoked", "contract_end", "ttl"
+    $table->boolean('active')->default(true);
+    $table->timestamps();
+});
 ```
 
 ## Job de eliminação automática
 
-Cron job diário:
+Job diário no Laravel scheduler (`app/Console/Kernel.php` ou `routes/console.php`):
+
+```php
+Schedule::job(EraseExpiredData::class)->daily();
+```
 1. Identifica registros que ultrapassaram retenção
-2. Aplica `postAction` conforme `RetentionRule`
+2. Aplica `post_action` conforme `retention_rules`
 3. Loga em `AuditLogEntry`
 4. Notifica relatório semanal ao Encarregado
 

@@ -57,7 +57,7 @@ Conforme a resposta, escolha o **pipeline**:
   ↓
 [F2] lgpd-data-mapping       → inventário inicial
   ↓
-[F3] lgpd-consent-schema     → schema Prisma + Better Auth
+[F3] lgpd-consent-schema     → migration Laravel + Eloquent
   ↓
 [F4] lgpd-privacy-policy     → v1.0 publicada                 ⏸ CHECKPOINT
   ↓

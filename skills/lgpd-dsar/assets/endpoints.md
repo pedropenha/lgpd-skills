@@ -1,107 +1,116 @@
-# DSAR Endpoints — Next.js + Better Auth
+# DSAR Endpoints — Laravel + Flutter/Nuxt
+
+Rotas (routes/api.php, grupo `auth:sanctum` ou middleware equivalente):
+
+```php
+Route::middleware('auth:sanctum')->group(function () {
+    Route::get('/me', [DsarController::class, 'show']);
+    Route::get('/me/export', [DsarController::class, 'export']);
+    Route::patch('/me/profile', [DsarController::class, 'updateProfile']);
+    Route::post('/me/erasure', [DsarController::class, 'erasure']);
+    Route::post('/consent/revoke', [ConsentController::class, 'revoke']);
+});
+```
 
 ## GET /api/me
 
 Resposta imediata em formato simplificado (Art. 19, I).
 
-```ts
-// app/api/me/route.ts
-import { auth } from "@/lib/auth";
-import { db } from "@/lib/db";
+```php
+// app/Http/Controllers/DsarController.php
+public function show(Request $request)
+{
+    $user = $request->user();
 
-export async function GET(req: Request) {
-  const session = await auth.api.getSession({ headers: req.headers });
-  if (!session) return new Response("Unauthorized", { status: 401 });
+    $consents = ConsentRecord::where('subject_id', $user->id)
+        ->where('status', 'GRANTED')
+        ->get(['purpose', 'granted_at']);
 
-  const userId = session.user.id;
+    $activeProcessing = ProcessingActivity::forSubject($user->id)
+        ->get(['name', 'purpose', 'legal_basis']);
 
-  const [user, consents, activeProcessing] = await Promise.all([
-    db.user.findUnique({ where: { id: userId } }),
-    db.consentRecord.findMany({
-      where: { subjectId: userId, status: "GRANTED" }
-    }),
-    db.processingActivity.findMany({
-      where: { subjects: { has: userId } }
-    })
-  ]);
+    AuditLogger::log([
+        'actor_id' => $user->id, 'actor_type' => 'USER',
+        'action' => 'DSAR_RECEIVED', 'resource' => "User:{$user->id}",
+        'purpose' => 'confirmation_simplified',
+    ], $request);
 
-  await logDsar(userId, "DSAR_RECEIVED", "confirmation_simplified");
-
-  return Response.json({
-    confirmation: "Yes, we process your personal data.",
-    activities: activeProcessing.map(a => ({
-      name: a.name,
-      purpose: a.purpose,
-      legalBasis: a.legalBasis
-    })),
-    consents: consents.map(c => ({ purpose: c.purpose, grantedAt: c.grantedAt })),
-    encarregado: {
-      name: process.env.DPO_NAME,
-      email: process.env.DPO_EMAIL
-    },
-    yourRightsUrl: "/privacy/your-rights"
-  });
+    return response()->json([
+        'confirmation' => 'Yes, we process your personal data.',
+        'activities' => $activeProcessing,
+        'consents' => $consents,
+        'encarregado' => [
+            'name' => config('lgpd.dpo_name'),
+            'email' => config('lgpd.dpo_email'),
+        ],
+        'yourRightsUrl' => '/privacy/your-rights',
+    ]);
 }
 ```
 
 ## GET /api/me/export
 
-Acesso completo + portabilidade. Job assíncrono se o volume for grande.
+Acesso completo + portabilidade. Job assíncrono (Laravel queue) se o volume for grande.
 
-```ts
-// app/api/me/export/route.ts
-export async function GET(req: Request) {
-  const session = await auth.api.getSession({ headers: req.headers });
-  if (!session) return new Response("Unauthorized", { status: 401 });
+```php
+public function export(Request $request)
+{
+    $format = $request->query('format', 'json'); // json | csv | portable
 
-  const url = new URL(req.url);
-  const format = url.searchParams.get("format") ?? "json"; // json | csv | portable
+    // Volume pequeno: sync. Volume grande: BuildUserDataBundle::dispatch()
+    // e responder com URL de download em ~5min (Storage::temporaryUrl)
+    $bundle = app(BuildUserDataBundle::class)->handle($request->user(), $format);
 
-  // Para volumes pequenos: sync
-  // Para volumes grandes: enfileirar e responder com URL de download em ~5min
-  const bundle = await buildUserDataBundle(session.user.id, format);
+    AuditLogger::log([
+        'actor_id' => $request->user()->id, 'actor_type' => 'USER',
+        'action' => 'DSAR_FULFILLED', 'resource' => "User:{$request->user()->id}",
+        'purpose' => 'export',
+        'payload' => ['bundle_hash' => hash('sha256', $bundle)],
+    ], $request);
 
-  await logDsar(session.user.id, "DSAR_FULFILLED", "export", {
-    bundleHash: sha256(bundle)
-  });
-
-  return new Response(bundle, {
-    headers: {
-      "Content-Type": "application/json",
-      "Content-Disposition": `attachment; filename="my-data-${Date.now()}.json"`
-    }
-  });
+    return response($bundle, 200, [
+        'Content-Type' => 'application/json',
+        'Content-Disposition' => 'attachment; filename="my-data-'.now()->timestamp.'.json"',
+    ]);
 }
 ```
 
 ## PATCH /api/me/profile
 
-Correção (Art. 18, III).
+Correção (Art. 18, III) — whitelist via Form Request.
 
-```ts
-export async function PATCH(req: Request) {
-  const session = await requireAuth(req);
-  const body = await req.json();
+```php
+// app/Http/Requests/UpdateProfileRequest.php
+public function rules(): array
+{
+    return [
+        'full_name' => ['sometimes', 'string', 'max:255'],
+        'phone' => ['sometimes', 'nullable', 'string', 'max:20'],
+        'address_line1' => ['sometimes', 'nullable', 'string', 'max:255'],
+        'city' => ['sometimes', 'nullable', 'string', 'max:100'],
+    ];
+}
 
-  // Whitelist de campos editáveis pelo titular
-  const allowed = ["fullName", "phone", "addressLine1", "city"];
-  const updates = Object.fromEntries(
-    Object.entries(body).filter(([k]) => allowed.includes(k))
-  );
+public function updateProfile(UpdateProfileRequest $request)
+{
+    $user = $request->user();
+    $before = $user->toArray();
+    $updates = $request->validated(); // só campos da whitelist
 
-  const before = await db.user.findUnique({ where: { id: session.user.id } });
-  const after = await db.user.update({
-    where: { id: session.user.id },
-    data: updates
-  });
+    $user->update($updates);
 
-  await logDsar(session.user.id, "DSAR_FULFILLED", "correction", {
-    fields: Object.keys(updates),
-    beforeHash: sha256(before),
-    afterHash: sha256(after)
-  });
+    AuditLogger::log([
+        'actor_id' => $user->id, 'actor_type' => 'USER',
+        'action' => 'DSAR_FULFILLED', 'resource' => "User:{$user->id}",
+        'purpose' => 'correction',
+        'payload' => [
+            'fields' => array_keys($updates),
+            'before_hash' => hash('sha256', json_encode($before)),
+            'after_hash' => hash('sha256', json_encode($user->fresh())),
+        ],
+    ], $request);
 
-  return Response.json({ updated: Object.keys(updates) });
+    return response()->json(['updated' => array_keys($updates)]);
 }
 ```
 
@@ -109,54 +118,52 @@ export async function PATCH(req: Request) {
 
 Eliminação (Art. 18, VI) com checagem de retenção legal.
 
-```ts
-export async function POST(req: Request) {
-  const session = await requireAuth(req);
-  const userId = session.user.id;
-  const { confirmation } = await req.json();
+```php
+public function erasure(Request $request)
+{
+    $request->validate(['confirmation' => ['required', 'in:EXCLUIR MINHA CONTA']]);
+    $user = $request->user();
 
-  if (confirmation !== "EXCLUIR MINHA CONTA") {
-    return new Response("Bad confirmation", { status: 400 });
-  }
+    // 1. Verificar retenções legais obrigatórias
+    $retentions = app(LegalRetentionChecker::class)->for($user);
+    // ex: ["fiscal:5y", "trabalhista:5y"]
 
-  // 1. Verificar retenções legais obrigatórias
-  const retentions = await checkLegalRetentions(userId);
-  // ex: ["fiscal:5y", "trabalhista:5y"]
+    if ($retentions->isNotEmpty()) {
+        // Bloqueio lógico + anonimização parcial
+        $user->update([
+            'email' => "anonymized-{$user->id}@deleted.local",
+            'full_name' => 'Usuário removido',
+            'cpf' => null,              // crypto-shred
+            'phone' => null,
+            'deleted_at' => now(),
+            'retention_until' => $retentions->max('until'),
+        ]);
+    } else {
+        // Hard delete + cascata (foreign keys onDelete cascade + limpeza manual)
+        app(HardDeleteUserCascade::class)->handle($user);
+    }
 
-  if (retentions.length > 0) {
-    // Bloqueio lógico + anonimização parcial
-    await db.user.update({
-      where: { id: userId },
-      data: {
-        email: `anonymized-${userId}@deleted.local`,
-        fullName: "Usuário removido",
-        cpf: null, // crypto-shred
-        phone: null,
-        deletedAt: new Date(),
-        retentionUntil: maxDate(retentions)
-      }
-    });
-  } else {
-    // Hard delete + cascata
-    await hardDeleteUserCascade(userId);
-  }
+    // 2. Propagar a operadores
+    PropagateErasure::dispatch($user->id);
 
-  // 2. Propagar a operadores
-  await propagateErasure(userId);
+    // 3. Revogar todas as sessões/tokens
+    $user->tokens()->delete(); // Sanctum
 
-  // 3. Revogar todas as sessões
-  await auth.api.revokeAllSessions({ headers: req.headers });
+    AuditLogger::log([
+        'actor_id' => $user->id, 'actor_type' => 'USER',
+        'action' => 'DSAR_FULFILLED', 'resource' => "User:{$user->id}",
+        'purpose' => 'erasure',
+        'payload' => [
+            'type' => $retentions->isNotEmpty() ? 'blocked_then_anonymized' : 'hard_deleted',
+            'retentions' => $retentions,
+        ],
+    ], $request);
 
-  await logDsar(userId, "DSAR_FULFILLED", "erasure", {
-    type: retentions.length > 0 ? "blocked_then_anonymized" : "hard_deleted",
-    retentions
-  });
-
-  return Response.json({
-    status: "ok",
-    type: retentions.length > 0 ? "anonymized" : "deleted",
-    retentions
-  });
+    return response()->json([
+        'status' => 'ok',
+        'type' => $retentions->isNotEmpty() ? 'anonymized' : 'deleted',
+        'retentions' => $retentions,
+    ]);
 }
 ```
 
@@ -164,84 +171,101 @@ export async function POST(req: Request) {
 
 Revogação de consentimento (Art. 18, IX).
 
-```ts
-export async function POST(req: Request) {
-  const session = await requireAuth(req);
-  const { purpose } = await req.json();
+```php
+// app/Http/Controllers/ConsentController.php
+public function revoke(Request $request)
+{
+    $request->validate(['purpose' => ['required', 'string']]);
+    $user = $request->user();
 
-  // Cria registro append-only de revogação
-  await db.consentRecord.create({
-    data: {
-      subjectId: session.user.id,
-      purpose,
-      status: "REVOKED",
-      revokedAt: new Date(),
-      legalBasis: "CONSENT",
-      policyVersionId: await getCurrentPolicyId(),
-      channel: "API",
-      evidenceHash: hashEvidence(req),
-      grantedAt: new Date() // marker, not the original grant
-    }
-  });
+    // Registro append-only de revogação
+    ConsentRecord::create([
+        'subject_id' => $user->id,
+        'purpose' => $request->purpose,
+        'status' => 'REVOKED',
+        'granted_at' => now(),   // marker, não o grant original
+        'revoked_at' => now(),
+        'legal_basis' => 'CONSENT',
+        'policy_version_id' => currentPolicyVersionId(),
+        'channel' => 'API',
+        'evidence_hash' => hashEvidence($request),
+        'ip_address' => $request->ip(),
+        'user_agent' => $request->userAgent(),
+    ]);
 
-  // Propaga aos operadores
-  await propagateRevocation(session.user.id, purpose);
+    PropagateConsentRevocation::dispatch($user->id, $request->purpose);
 
-  await logDsar(session.user.id, "DSAR_FULFILLED", "consent_revoke", { purpose });
+    AuditLogger::log([
+        'actor_id' => $user->id, 'actor_type' => 'USER',
+        'action' => 'DSAR_FULFILLED', 'resource' => "User:{$user->id}",
+        'purpose' => 'consent_revoke',
+        'payload' => ['purpose' => $request->purpose],
+    ], $request);
 
-  return Response.json({ status: "revoked", purpose });
+    return response()->json(['status' => 'revoked', 'purpose' => $request->purpose]);
 }
 ```
 
-## React Native — tela "Meus Dados"
+## Flutter — tela "Meus Dados"
 
-```tsx
-// screens/PrivacyScreen.tsx
-import { View, Button, Alert } from 'react-native';
+```dart
+// lib/features/privacy/privacy_screen.dart
+class PrivacyScreen extends StatelessWidget {
+  Future<void> _exportData() async {
+    final res = await dio.get('/api/me/export');
+    // salvar com path_provider + compartilhar com share_plus
+  }
 
-export function PrivacyScreen() {
-  const exportData = async () => {
-    const res = await fetch(`${API}/api/me/export`, { /* auth header */ });
-    // salva em arquivo local com expo-file-system + compartilhar
-  };
-
-  const requestErasure = () => {
-    Alert.alert(
-      "Excluir conta",
-      "Esta ação é irreversível para os dados não retidos por obrigação legal. Confira a política.",
-      [
-        { text: "Cancelar" },
-        {
-          text: "Excluir",
-          style: "destructive",
-          onPress: async () => {
-            const confirm = await promptText("Digite EXCLUIR MINHA CONTA para confirmar");
-            if (confirm === "EXCLUIR MINHA CONTA") {
-              await fetch(`${API}/api/me/erasure`, {
-                method: "POST",
-                body: JSON.stringify({ confirmation: confirm })
-              });
-            }
-          }
-        }
-      ]
+  Future<void> _requestErasure(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Excluir conta'),
+        content: const Text(
+          'Esta ação é irreversível para os dados não retidos por '
+          'obrigação legal. Confira a política. Digite '
+          'EXCLUIR MINHA CONTA para confirmar.'),
+        // TextField de confirmação + ações
+      ),
     );
-  };
+    if (confirmed == true) {
+      await dio.post('/api/me/erasure',
+          data: {'confirmation': 'EXCLUIR MINHA CONTA'});
+    }
+  }
 
-  return (
-    <View>
-      <Button title="Exportar meus dados" onPress={exportData} />
-      <Button title="Gerenciar consentimentos" onPress={() => navigate("/privacy/consents")} />
-      <Button title="Corrigir dados" onPress={() => navigate("/privacy/profile")} />
-      <Button title="Excluir minha conta" onPress={requestErasure} color="red" />
-    </View>
-  );
+  @override
+  Widget build(BuildContext context) {
+    return Column(children: [
+      ElevatedButton(onPressed: _exportData, child: const Text('Exportar meus dados')),
+      ElevatedButton(onPressed: () => context.push('/privacy/consents'),
+          child: const Text('Gerenciar consentimentos')),
+      ElevatedButton(onPressed: () => context.push('/privacy/profile'),
+          child: const Text('Corrigir dados')),
+      ElevatedButton(
+        onPressed: () => _requestErasure(context),
+        style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+        child: const Text('Excluir minha conta'),
+      ),
+    ]);
+  }
 }
 ```
+
+## Nuxt 2 — página "Meus Dados"
+
+Mesma estrutura em `/pages/privacy/index.vue`: chamadas via `$axios`/`fetch`
+aos mesmos endpoints, dialog de confirmação com input de texto para
+`EXCLUIR MINHA CONTA`, e link para `/privacy/your-rights`.
 
 ## Alerts de SLA
 
-Configure cron / scheduled job:
+No Laravel scheduler (`app/Console/Kernel.php` ou `routes/console.php`):
+
 - Dia 10: alerta amarelo no ticket
 - Dia 13: alerta vermelho + escalonamento ao Encarregado
 - Dia 15: bloqueio do tratamento se ainda não atendido + comunicação ao titular explicando o atraso (sempre desfavorável — evitar a todo custo)
+
+```php
+Schedule::job(CheckDsarSla::class)->daily();
+```

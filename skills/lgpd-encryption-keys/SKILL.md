@@ -1,6 +1,6 @@
 ---
 name: lgpd-encryption-keys
-description: Configure encryption at rest, in transit, and key management aligned with LGPD Art. 46 (security duty) and the ANPD's Guia de Segurança da Informação para ATPP. Use when user asks 'criptografia LGPD', 'KMS', 'TDE', 'encryption at rest', 'rotação de chaves', 'pgcrypto', 'column-level encryption'. Tailored for Prisma/PostgreSQL/Better Auth stack.
+description: Configure encryption at rest, in transit, and key management aligned with LGPD Art. 46 (security duty) and the ANPD's Guia de Segurança da Informação para ATPP. Use when user asks 'criptografia LGPD', 'KMS', 'TDE', 'encryption at rest', 'rotação de chaves', 'pgcrypto', 'column-level encryption'. Tailored for Laravel/PHP + Flutter/Nuxt stack.
 ---
 
 # Encryption & Key Management
@@ -10,13 +10,13 @@ Art. 46 LGPD + Guia de Segurança da Informação para ATPP (ANPD, 2021).
 ## Camadas
 
 ### 1. Em trânsito
-- **TLS 1.3** em toda comunicação (cliente ↔ servidor, serviço ↔ serviço)
+- **TLS 1.3** em toda comunicação (app/web ↔ API Laravel, serviço ↔ serviço)
 - **HSTS** habilitado (`max-age=31536000; includeSubDomains; preload`)
-- **Certificate pinning** em apps mobile (React Native — `react-native-ssl-pinning` ou equivalente)
+- **Certificate pinning** no app Flutter (`dio` + `CertificatePinningInterceptor`, ou `http_certificate_pinning`) — não aplicável a web (Nuxt usa TLS do browser)
 - **mTLS** para comunicação entre serviços internos quando viável
 
 ### 2. Em repouso
-- **TDE (Transparent Data Encryption)** no PostgreSQL — habilitado pelo provider (AWS RDS, GCP Cloud SQL)
+- **TDE (Transparent Data Encryption)** no banco — habilitado pelo provider (AWS RDS, GCP Cloud SQL) para Postgres/MySQL
 - **Volume encryption** (EBS, persistent disks) — geralmente padrão hoje
 - **Backups criptografados** — mesma chave do volume, ou KMS dedicado
 - **Storage de arquivos** (S3, GCS): server-side encryption (SSE-KMS preferível a SSE-S3)
@@ -24,49 +24,43 @@ Art. 46 LGPD + Guia de Segurança da Informação para ATPP (ANPD, 2021).
 ### 3. Nível de aplicação (campos sensíveis)
 Para CPF, biometria, dados de saúde, tokens de auth — criptografia adicional em coluna:
 
-```ts
-// lib/crypto/field-encryption.ts
-import { createCipheriv, createDecipheriv, randomBytes } from "crypto";
-
-const KEY = await loadKeyFromKMS(); // 32 bytes
-
-export function encryptField(plain: string): string {
-  const iv = randomBytes(12);
-  const cipher = createCipheriv("aes-256-gcm", KEY, iv);
-  const enc = Buffer.concat([cipher.update(plain, "utf8"), cipher.final()]);
-  const tag = cipher.getAuthTag();
-  return Buffer.concat([iv, tag, enc]).toString("base64");
-}
-
-export function decryptField(encoded: string): string {
-  const buf = Buffer.from(encoded, "base64");
-  const iv = buf.subarray(0, 12);
-  const tag = buf.subarray(12, 28);
-  const enc = buf.subarray(28);
-  const decipher = createDecipheriv("aes-256-gcm", KEY, iv);
-  decipher.setAuthTag(tag);
-  return Buffer.concat([decipher.update(enc), decipher.final()]).toString("utf8");
+```php
+// app/Models/User.php — cast 'encrypted' usa Crypt (AES-256-GCM, chave APP_KEY)
+protected function casts(): array
+{
+    return [
+        'cpf' => 'encrypted',
+        'cpf_index' => 'hashed', // blind index determinístico p/ lookup
+    ];
 }
 ```
 
-Prisma extension para criptografia transparente:
-```ts
-const prisma = new PrismaClient().$extends({
-  query: {
-    user: {
-      async create({ args, query }) {
-        if (args.data.cpf) args.data.cpf = encryptField(args.data.cpf);
-        return query(args);
-      },
-      async findUnique({ args, query }) {
-        const r = await query(args);
-        if (r?.cpf) r.cpf = decryptField(r.cpf);
-        return r;
-      }
+Para criptografia manual ou chave própria (não a `APP_KEY`):
+
+```php
+// app/Services/FieldEncryption.php
+final class FieldEncryption
+{
+    public static function encrypt(string $plain, string $key): string
+    {
+        $iv = random_bytes(12); // 96-bit IV para GCM
+        $tag = '';
+        $enc = openssl_encrypt($plain, 'aes-256-gcm', $key, OPENSSL_RAW_DATA, $iv, $tag);
+        return base64_encode($iv.$tag.$enc);
     }
-  }
-});
+
+    public static function decrypt(string $encoded, string $key): string
+    {
+        $buf = base64_decode($encoded);
+        $iv = substr($buf, 0, 12);
+        $tag = substr($buf, 12, 16);
+        $enc = substr($buf, 28);
+        return openssl_decrypt($enc, 'aes-256-gcm', $key, OPENSSL_RAW_DATA, $iv, $tag);
+    }
+}
 ```
+
+**Atenção:** cast `encrypted` é não-determinístico — não dá para fazer `where('cpf', ...)`. Para busca, mantenha um **blind index** (HMAC-SHA-256 do valor em coluna separada, ex: `cpf_index`) e consulte por ele.
 
 ## KMS
 
@@ -78,6 +72,8 @@ Use KMS gerenciado (AWS KMS, GCP KMS, Azure Key Vault) ou HashiCorp Vault para c
 - **Log de uso da chave** (CloudTrail / equivalente)
 - **Backup das chaves** (KMS já faz, mas atestar)
 
+Em Laravel, injete a chave do KMS via `.env`/secret manager — nunca hardcode nem commite `APP_KEY` ou data keys.
+
 ## Crypto-shredding
 
 Para suportar Art. 18, VI (eliminação):
@@ -88,21 +84,21 @@ Para suportar Art. 18, VI (eliminação):
 
 Útil quando há retenção legal de outros campos mas o restante deve ser eliminável.
 
-## Better Auth + senhas
+## Laravel + senhas
 
-Better Auth usa hash padrão (Argon2id ou bcrypt). Configure:
-- Argon2id com memória ≥ 64MB, paralelismo 2, iterações ≥ 3
-- OU bcrypt com cost ≥ 12
+Em `config/hashing.php`:
+- `bcrypt` com `'rounds' => 12` ou mais (default do Laravel)
+- OU driver `argon` — Argon2id com `'memory' => 65536` (64MB), `'threads' => 2`, `'time' => 4`
 
 ## Status update
 
 ```markdown
 ## F7 — Encryption ✓
 - TLS 1.3 + HSTS confirmados
-- TDE habilitado no Postgres
+- TDE habilitado no banco
 - KMS configurado com 3 chaves (identidade, financeiro, saúde)
-- Crypto-shredding implementado para campos críticos
+- Casts 'encrypted' + blind indexes nos campos críticos
+- Crypto-shredding implementado para campos elimináveis
 - Rotação anual em calendário
 - Próximo: lgpd-retention-erasure
 ```
-

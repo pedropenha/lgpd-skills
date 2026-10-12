@@ -1,6 +1,6 @@
 ---
 name: lgpd-audit-logging
-description: Design and implement immutable, hash-chained audit logging for accountability (LGPD Art. 6, X) and incident registration (Res. 15/2024 Art. 10, 5-year retention). Use when user asks 'audit log', 'log de auditoria', 'logging LGPD', 'accountability log', or as part of audit pipeline. Outputs schema + middleware patterns for Next.js.
+description: Design and implement immutable, hash-chained audit logging for accountability (LGPD Art. 6, X) and incident registration (Res. 15/2024 Art. 10, 5-year retention). Use when user asks 'audit log', 'log de auditoria', 'logging LGPD', 'accountability log', or as part of audit pipeline. Outputs schema + middleware patterns for Laravel/PHP.
 ---
 
 # Audit Logging
@@ -26,93 +26,96 @@ Log imutável encadeado para prova de conformidade (Art. 6º, X — responsabili
 - Exports e downloads em massa
 - Mudanças em RBAC
 
-## Schema Prisma
+## Migration + Model
 
-```prisma
-model AuditLogEntry {
-  id          String   @id @default(cuid())
-  actorId     String?  // null se sistema
-  actorType   ActorType
-  action      String   // "READ", "WRITE", "DELETE", "EXPORT", "DSAR_FULFILLED", "CONSENT_REVOKED"
-  resource    String   // "User:abc123", "Order:xyz"
-  subjectId   String?  // titular afetado (se aplicável)
-  legalBasis  String?
-  purpose     String?
-  ipAddress   String?  @db.Inet
-  userAgent   String?
-  payloadHash String   // SHA-256 do payload (sem PII)
-  prevHash    String?  // hash do registro anterior
-  selfHash    String   // SHA-256(prevHash || timestamp || action || resource || payloadHash)
-  timestamp   DateTime @default(now())
+```php
+Schema::create('audit_log_entries', function (Blueprint $table) {
+    $table->ulid('id')->primary();
+    $table->unsignedBigInteger('actor_id')->nullable();   // null se sistema
+    $table->string('actor_type');                          // USER | ADMIN | SYSTEM | OPERATOR
+    $table->string('action');                              // "READ", "WRITE", "DELETE", "EXPORT", "DSAR_FULFILLED", "CONSENT_REVOKED"
+    $table->string('resource');                            // "User:123", "Order:456"
+    $table->unsignedBigInteger('subject_id')->nullable();  // titular afetado
+    $table->string('legal_basis')->nullable();
+    $table->string('purpose')->nullable();
+    $table->ipAddress('ip_address')->nullable();
+    $table->text('user_agent')->nullable();
+    $table->string('payload_hash');                        // SHA-256 do payload (sem PII)
+    $table->string('prev_hash')->nullable();               // hash do registro anterior
+    $table->string('self_hash');                           // SHA-256(prevHash|timestamp|action|resource|payloadHash)
+    $table->timestamp('timestamp');
 
-  @@index([subjectId, timestamp])
-  @@index([actorId, timestamp])
-  @@index([action, timestamp])
-}
-
-enum ActorType { USER ADMIN SYSTEM OPERATOR }
+    $table->index(['subject_id', 'timestamp']);
+    $table->index(['actor_id', 'timestamp']);
+    $table->index(['action', 'timestamp']);
+});
 ```
 
-## Middleware Next.js
+```php
+// app/Models/AuditLogEntry.php — sem updated_at, sem soft deletes (append-only)
+class AuditLogEntry extends Model
+{
+    public $timestamps = false;
+    protected $guarded = [];
+}
+```
 
-```ts
-// lib/audit.ts
-import { createHash } from "crypto";
-import { db } from "./db";
+## Service + middleware Laravel
 
-export async function logAudit(entry: {
-  actorId?: string;
-  actorType: ActorType;
-  action: string;
-  resource: string;
-  subjectId?: string;
-  legalBasis?: string;
-  purpose?: string;
-  payload?: object;
-  req?: Request;
-}) {
-  const last = await db.auditLogEntry.findFirst({
-    orderBy: { timestamp: "desc" },
-    select: { selfHash: true }
-  });
+```php
+// app/Services/AuditLogger.php
+final class AuditLogger
+{
+    public static function log(array $entry, ?Request $request = null): AuditLogEntry
+    {
+        $lastHash = AuditLogEntry::latest('timestamp')->value('self_hash');
 
-  const payloadHash = createHash("sha256")
-    .update(JSON.stringify(entry.payload ?? {}))
-    .digest("hex");
+        $payloadHash = hash('sha256', json_encode($entry['payload'] ?? []));
+        $timestamp = now();
 
-  const timestamp = new Date();
+        $selfHash = hash('sha256', implode('|', [
+            $lastHash ?? '',
+            $timestamp->toIso8601String(),
+            $entry['action'],
+            $entry['resource'],
+            $payloadHash,
+        ]));
 
-  const selfHash = createHash("sha256")
-    .update(`${last?.selfHash ?? ""}|${timestamp.toISOString()}|${entry.action}|${entry.resource}|${payloadHash}`)
-    .digest("hex");
-
-  return db.auditLogEntry.create({
-    data: {
-      ...entry,
-      payload: undefined,
-      payloadHash,
-      prevHash: last?.selfHash,
-      selfHash,
-      ipAddress: entry.req?.headers.get("x-forwarded-for") ?? null,
-      userAgent: entry.req?.headers.get("user-agent") ?? null,
-      timestamp
+        return AuditLogEntry::create([
+            'actor_id' => $entry['actor_id'] ?? null,
+            'actor_type' => $entry['actor_type'],
+            'action' => $entry['action'],
+            'resource' => $entry['resource'],
+            'subject_id' => $entry['subject_id'] ?? null,
+            'legal_basis' => $entry['legal_basis'] ?? null,
+            'purpose' => $entry['purpose'] ?? null,
+            'ip_address' => $request?->ip(),
+            'user_agent' => $request?->userAgent(),
+            'payload_hash' => $payloadHash,
+            'prev_hash' => $lastHash,
+            'self_hash' => $selfHash,
+            'timestamp' => $timestamp,
+        ]);
     }
-  });
 }
 ```
+
+Para acesso a dados sensíveis, um middleware dedicado (`audit.sensitive`) ou
+observers Eloquent (`retrieved` em models sensíveis) cobrem os eventos de leitura.
 
 ## Verificação de integridade
 
-Script periódico que percorre todas as entries em ordem e verifica que cada `selfHash` bate. Qualquer divergência = tampering ou bug.
+Console command agendado (semanal) que percorre todas as entries em ordem e
+verifica que cada `self_hash` bate com `prev_hash` + campos. Qualquer
+divergência = tampering ou bug.
 
 ## Status update
 
 ```markdown
 ## F6 — Audit logging ✓
-- Schema implementado
-- Middleware ativo em rotas críticas
+- Schema implementado (migration audit_log_entries)
+- AuditLogger service + middleware ativos em rotas críticas
 - Verificação de integridade agendada (semanal)
 - Retenção configurada (5 anos para eventos críticos)
 - Próximo: lgpd-encryption-keys
 ```
-

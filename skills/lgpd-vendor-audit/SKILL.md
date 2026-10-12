@@ -16,7 +16,7 @@ Liste TODOS os operadores (cloud, SDK, analytics, comms, pagamento, observabilit
 - `cors origins` no backend
 - Webhooks ativos
 - Cron jobs externos
-- Domain DNS records (CNAMEs para Vercel, Cloudflare, etc.)
+- Domain DNS records (CNAMEs para Vercel, Cloudflare, hospedagem própria, etc.)
 
 ### Passo 2: Tiering por risco
 
