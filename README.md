@@ -13,6 +13,73 @@
 
 ---
 
+## 🍴 Sobre este fork (pedropenha/lgpd-skills)
+
+Fork de [`goul4rt/lgpd-skills`](https://github.com/goul4rt/lgpd-skills) (MIT, pin no commit `d85d79a`, v1.2.0) com duas frentes de mudança:
+
+1. **Stack adaptada**: os templates de código saíram de Prisma/Next.js/Better Auth/React Native para **PHP/Laravel + Flutter + Vue/Nuxt 2** — stack dos projetos onde o bundle é usado (edtech).
+2. **Cobertura ampliada**: de 19 para **22 skills** — três novas skills criadas para o cenário edtech B2B brasileiro (Marco Civil, DPA escolar, acessibilidade legal).
+
+Detalhes de atribuição e licenças em [`FORK-NOTES.md`](./FORK-NOTES.md). Histórico em [`CHANGELOG.md`](./CHANGELOG.md) (v1.3.0 adaptação de stack, v1.4.0 novas skills).
+
+### Proveniência — o que cada fonte trouxe
+
+| Fonte | Licença | O que trouxe |
+|-------|---------|--------------|
+| [`goul4rt/lgpd-skills`](https://github.com/goul4rt/lgpd-skills) | MIT | As 19 skills originais: maestro + pipeline completo LGPD/ANPD/ECA Digital, templates ROPA/RIPD/DPA, normative-reference |
+| [`evolution-foundation/evo-nexus`](https://github.com/evolution-foundation/evo-nexus) | Apache-2.0 | Base do checklist Marco Civil (logs, responsabilidade de plataforma) que informou `marco-civil-platform` |
+| [`AlissonSantos1/brasil-legal-skills`](https://github.com/AlissonSantos1/brasil-legal-skills) | MIT | Referência de conteúdo LGPD/Marco Civil/cookies que informou `marco-civil-platform` |
+| [`hamzabellouch/agent-skills`](https://github.com/hamzabellouch/agent-skills) | MIT | `scorm-xapi-interoperability` (instalada separada do bundle — ver [Skills complementares](#skills-complementares)) |
+
+### As 22 skills — o que cada uma cobre
+
+| Skill | Cobertura | Origem |
+|-------|-----------|--------|
+| `lgpd-audit` | **Maestro**: orquestra auditoria ponta-a-ponta com 4 pipelines (greenfield/legacy/híbrido/incidente), checkpoints humanos e artefatos em `.lgpd/` | upstream |
+| `lgpd-anonymization` | Anonimização e pseudonimização (Art. 5, XI; Art. 13, §4) — receitas SQL/Python, k-anonymity, tokenização | upstream |
+| `lgpd-audit-logging` | Log imutável hash-chained (Art. 6, X + Res. 15/2024 — 5 anos). **Adaptada**: migration Eloquent + AuditLogger PHP | upstream → Laravel |
+| `lgpd-consent-schema` | Ledger de consentimento append-only e versionado (Art. 8). **Adaptada**: migration Laravel completa + Guardian/MinorLink | upstream → Laravel |
+| `lgpd-data-mapping` | Inventário de tratamentos (input do ROPA). **Adaptada**: anotações `@lgpd:` em docblocks PHP + script de extração | upstream → PHP |
+| `lgpd-dpa` | DPA genérico Art. 39 — 12 cláusulas para contratos com operadores | upstream |
+| `lgpd-dpo-encarregado` | Designação do Encarregado/DPO (Art. 41 + Res. 18/2024), isenção ATPP | upstream |
+| `lgpd-dsar` | Direitos do titular (Art. 18, 9 direitos, prazo 15 dias). **Adaptada**: controllers Laravel + tela Flutter + notas Nuxt | upstream → Laravel/Flutter |
+| `lgpd-eca-digital-minors` | ECA Digital (Lei 15.211/2025): verificação de idade real, vinculação a responsável até 16, ban de profiling/loot boxes, relatórios. **Adaptada**: notas Flutter/Nuxt/PHP | upstream → +stack notes |
+| `lgpd-encryption-keys` | Criptografia em trânsito/repouso, KMS, crypto-shredding. **Adaptada**: openssl PHP + casts `encrypted` + blind index | upstream → PHP |
+| `lgpd-incident-response` | Runbook de incidente (Art. 48 + Res. 15/2024): 3 dias úteis ANPD, 12 itens, notificação a titulares | upstream |
+| `lgpd-international-transfer` | Transferência internacional (Arts. 33–36 + Cláusulas-Padrão Res. 19/2024) | upstream |
+| `lgpd-legacy-retrofit` | Gap analysis de sistema legado (Pipeline B) → `.lgpd/gaps.md` | upstream |
+| `lgpd-legal-basis` | Escolha de base legal por atividade (Art. 7/11) + LIA para legítimo interesse | upstream |
+| `lgpd-privacy-policy` | Política de privacidade versionada (Art. 9, 7 elementos) — checkpoint jurídico | upstream |
+| `lgpd-retention-erasure` | Retenção × direito de eliminação (Arts. 15–16, 18 VI) + prazos BR (fiscal, trabalhista, Marco Civil). **Adaptada**: migration + Laravel scheduler | upstream → Laravel |
+| `lgpd-ripd` | Relatório de Impacto (Art. 38) para tratamentos de alto risco | upstream |
+| `lgpd-ropa` | Registro de Operações de Tratamento (Art. 37) no formato ANPD | upstream |
+| `lgpd-vendor-audit` | Due diligence de operadores terceiros (Art. 39) + checklist | upstream |
+| **`marco-civil-platform`** | **Nova (fork)**: Marco Civil (Lei 12.965/2014 + Dec. 8.771/2016) — logs de aplicação 6 meses, sigilo via ordem judicial, takedown UGC Art. 19/21, termos de uso | fork, informado por evo-nexus + brasil-legal-skills |
+| **`lgpd-school-dpa`** | **Nova (fork)**: DPA escola(controladora)→plataforma(operadora) edtech + template com menores, ECA, SLA, ciclo letivo | fork |
+| **`lbi-education-a11y`** | **Nova (fork)**: LBI (Lei 13.146/2015), Decreto 5.296/2004, eMAG p/ editais B2G, NBR 17225, PNLD — camada legal de acessibilidade | fork |
+
+### Skills complementares (instaladas fora do bundle)
+
+| Skill | Fonte | O que cobre |
+|-------|-------|-------------|
+| `scorm-xapi-interoperability` | [`hamzabellouch/agent-skills`](https://github.com/hamzabellouch/agent-skills) (MIT) | SCORM 1.2/2004, xAPI, CMI5, imsmanifest, API JS↔LMS, LRS — para export de aulas |
+
+### Instalação (este fork)
+
+```bash
+# Claude Code
+/plugin marketplace add pedropenha/lgpd-skills
+/plugin install lgpd-skills@lgpd-skills
+
+# Qualquer agente compatível com Agent Skills (via Vercel skills CLI)
+npx skills add pedropenha/lgpd-skills
+
+# Gemini CLI
+gemini extensions install https://github.com/pedropenha/lgpd-skills
+```
+
+---
+
 ## 📑 Índice
 
 - [O que é](#-o-que-é)
@@ -60,7 +127,7 @@ e funcionam nativamente em 5 agentes. Escolha o seu:
 ### Claude Code (recomendado)
 
 ```text
-/plugin marketplace add goul4rt/lgpd-skills
+/plugin marketplace add pedropenha/lgpd-skills
 /plugin install lgpd-skills@lgpd-skills
 ```
 
@@ -69,7 +136,7 @@ Atualizar: `/plugin marketplace update lgpd-skills`.
 ### Codex (CLI / App)
 
 ```bash
-codex plugin marketplace add goul4rt/lgpd-skills
+codex plugin marketplace add pedropenha/lgpd-skills
 codex plugin add lgpd-skills@lgpd-skills
 ```
 
@@ -79,7 +146,7 @@ nada ao marketplace da OpenAI — o repo é a própria fonte.
 ### Gemini CLI
 
 ```bash
-gemini extensions install https://github.com/goul4rt/lgpd-skills
+gemini extensions install https://github.com/pedropenha/lgpd-skills
 ```
 
 Atualizar: `gemini extensions update lgpd-skills`. As 19 skills são auto-descobertas e
@@ -97,7 +164,7 @@ Adicione ao array `plugin` do seu `opencode.json` e reinicie:
 
 ```json
 {
-  "plugin": ["lgpd-skills@git+https://github.com/goul4rt/lgpd-skills.git"]
+  "plugin": ["lgpd-skills@git+https://github.com/pedropenha/lgpd-skills.git"]
 }
 ```
 
@@ -108,7 +175,7 @@ skill lgpd-audit").
 ### Manual (qualquer agente que leia `~/.claude/skills/` ou `.claude/skills/`)
 
 ```bash
-git clone https://github.com/goul4rt/lgpd-skills.git /tmp/lgpd-skills
+git clone https://github.com/pedropenha/lgpd-skills.git /tmp/lgpd-skills
 cp -r /tmp/lgpd-skills/skills/lgpd-* ~/.claude/skills/   # global
 # ou, por projeto: cp -r /tmp/lgpd-skills/skills/lgpd-* .claude/skills/
 rm -rf /tmp/lgpd-skills
